@@ -21,20 +21,23 @@ def invfinder(data, params={'max_embed_depth': 100,
         nonnegative slope. """
 
         dt = data.temperature.shift({'index':-1}) - data.temperature
-        dt = list(dt.values >= 0)   
+        dt = list(dt.values >= 0)
         index_list, = np.nonzero(np.diff(dt))
-
+        
         index_list = [x + 1 for x in index_list]
         if len(index_list) > 0:
             if index_list[0] == 0:
                 index_list = list(index_list) + [len(dt)-1]
+            else:
+                index_list = [0] + list(index_list) + [len(dt)-1]
         else:
-            index_list = [0] + list(index_list) + [len(dt)-1]
+            index_list = [0, len(dt)-1]
             
         return index_list
 
 
     index_list = init_index_list(data)
+
     
     while True:
         init_length = len(index_list)
