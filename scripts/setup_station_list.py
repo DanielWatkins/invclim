@@ -4,10 +4,10 @@ are selected. Name style is cleaned up and fixed. Time zones are added.
 
 Next, soundings matching the names in the station list are read in from
 the files in the folder Data/IGRA2_Derived. It is expected that the soundings
-have already been downloaded using siphon.simplewebservice.igra2.
+have already been downloaded using siphon.simplewebservice.igra2 and placed 
+into Data/Soundings/
 
-The soundings are used to then count the number of existing
-
+# To do:
 """
 import pandas as pd
 import numpy as np
@@ -15,7 +15,7 @@ import numpy as np
 station_list = pd.read_fwf('../igra2-station-list.txt',
                           header=None)
 station_list.columns = ['station_id', 'lat', 'lon', 'elevation', 'name', 'start_year', 'end_year', 'count']
-station_list = station_list.loc[(station_list.lat >= 65) & (station_list.end_year >= 2020)]
+station_list = station_list.loc[(station_list.lat >= 65) & (station_list.end_year >= 2019)]
 station_list = station_list.loc[station_list.start_year <= 2000]
 
 station_list.set_index('station_id', inplace=True)
@@ -97,21 +97,20 @@ for site in station_list.index:
         station_list.loc[site, 'region'] = 'North America'
     elif site[0] == 'G':
         station_list.loc[site, 'region'] = 'Greenland'
-    elif site[0] in ['J', 'S']:
+    elif site[0] in ['J']:
         station_list.loc[site, 'region'] = 'North Atlantic'
-    elif site[0] in ['F', 'R']:
-        station_list.loc[site, 'region'] = 'Eurasia'
-
+    elif site[0:2] == 'SV':
+        station_list.loc[site, 'region'] = 'North Atlantic'
+    
+station_list.loc[(station_list.lon > 22) & (station_list.lon < 60), 'region'] = 'West Eurasia'
+station_list.loc[station_list.lon > 60, 'region'] = 'East Eurasia'
 
 
 soundings = {}
 for site in station_list.index:
     try:
-        soundings[site] = pd.read_csv('../Data/IGRA2_Derived/' + site + '-igra2-derived.csv')
+        soundings[site] = pd.read_csv('../Data/Soundings/' + site + '-cleaned-soundings.csv')
         soundings[site]['date'] = pd.to_datetime(soundings[site].date.values)
-        soundings[site] = soundings[site].loc[soundings[site].pressure >= 500]
-        soundings[site] = soundings[site].loc[(soundings[site].date.dt.year >= 2000) 
-                                              & (soundings[site].date.dt.year < 2020)]
     except:
         print('Missing sounding data for ' + site)
         
@@ -142,5 +141,6 @@ station_list['n00Z'] = station_list['n00Z'].astype(int)
 station_list['n12Z'] = station_list['n12Z'].astype(int)
 
 # The number 7305 is the number of days from Jan 1, 2000 to Dec 31, 2019
-station_list.loc[(station_list.n00Z/7305 > 0.75) | (station_list.n12Z/7305 > 0.75)].to_csv('../Data/arctic_stations.csv')
+station_list.loc[(station_list.n00Z/7305 > 0.5) | (station_list.n12Z/7305 > 0.5)].to_csv('../Data/arctic_stations.csv')
 
+# Add in here: number of undersampled months
