@@ -1,4 +1,5 @@
-"""Download IGRA2 data for all stations north of 65 with data extending from 2000 to 2019.
+"""Download IGRA2 and/or process data for all stations north of 65 with data extending from 2000 to 2019. 
+Just in case, downloads the data from 1990-2019 and processes that too.
 Add calculated variables, and select only the significant levels, surface level, and 500 hPa level."""
 
 import numpy as np
@@ -9,6 +10,7 @@ from siphon.simplewebservice.igra2 import IGRAUpperAir
 from datetime import datetime
 import os
 
+re_download = False
 
 def import_soundings(station_id):
     """Reads in file with soundings, selects data below 500 hPa, and renames the columns as needed.
@@ -18,13 +20,14 @@ def import_soundings(station_id):
     df = pd.read_csv('../Data/IGRA2_Derived/' + station_id + '-igra2-derived.csv')
     df = df.loc[df.pressure >= 500]
     press = df.pressure.values
-    press_sel = ((press != 1000) & (press != 925)) & ((press != 850) & (press != 700))
-    df = df.loc[press_sel]
+    #press_sel = ((press != 1000) & (press != 925)) & ((press != 850) & (press != 700))
+    #press_sel = press >= 500
+    #df = df.loc[press_sel] # Add part to the inversion calculator to not look for inversions too high up
     df['date'] = pd.to_datetime(df.date.values)
     hours = df.date.dt.hour
     hour_sel = ((hours > 22) | (hours < 2)) | ((hours > 10) & (hours < 14))
     df = df.loc[hour_sel, :]
-    df = df.loc[(df.date >= '2000-01-01') & (df.date < '2020-01-01')].reset_index(drop=True)
+    df = df.loc[(df.date >= '1990-01-01') & (df.date < '2020-01-01')].reset_index(drop=True)
     
 
     
@@ -39,6 +42,9 @@ def import_soundings(station_id):
                         pressure=df.pressure.values * units.hPa,
                         temperature=df.temperature.values * units.kelvin,
                         dewpoint=df.dewpoint_temperature.values * units.kelvin).to_base_units().magnitude
+    
+    # Only retain soundings with at least 5 levels
+    df = df.groupby('date').filter(lambda x: len(x) > 5)
     
     def satvap_ice(T):
         """Returns the saturation vapor pressure in mb for temperatures
@@ -79,39 +85,49 @@ def import_soundings(station_id):
 
     return df.loc[:, ['date', 'pressure', 'height', 'temperature', 'dewpoint_temperature',
        'potential_temperature', 'equivalent_potential_temperature', 'relative_humidity',
-       'adjusted_relative_humidity']].round(2)
+       'adjusted_relative_humidity', 'u_wind', 'v_wind']].round(2)
 
 
 
-station_list = pd.read_fwf('../igra2-station-list.txt',
+station_list = pd.read_fwf('../Data/igra2-station-list.txt',
                           header=None)
 station_list.columns = ['station_id', 'lat', 'lon', 'elevation', 'name', 'start_year', 'end_year', 'count']
-station_list = station_list.loc[(station_list.lat >= 65) & (station_list.end_year >= 2019)]
-station_list = station_list.loc[station_list.start_year <= 2000]
+station_list = station_list.loc[(station_list.lat >= 64) & (station_list.end_year >= 2019)]
+#station_list = station_list.loc[station_list.start_year <= 2000]
 
 station_list.set_index('station_id', inplace=True)
 print('Number of available stations:', len(station_list))
 
 begin = datetime(1990,1,10)
 end = datetime(2019,12,31,23)
-for site in station_list.index:
+
+
+downloaded = os.listdir('../Data/IGRA2_Derived/')
+downloaded = [x.split('-')[0] for x in downloaded if x[-3:] == 'csv']
+
+if re_download:
+    to_download = [site for site in station_list.index]
+else:
+    to_download = []
+    for site in station_list.index:
+        if site in downloaded:
+            print('Already downloaded', site)
+        else:
+            to_download.append(site)
+for site in to_download:
     try:
         df, header = IGRAUpperAir.request_data([begin, end], site, derived=True)
         df.to_csv('../Data/IGRA2_Derived/' + site + '-igra2-derived.csv')
         header.to_csv('../Data/IGRA2_Headers/' + site + '-igra2-derived.csv')
-        print(station)
+        print(site)
     except:
         print('Download failed for site', site)
-        
-        
-        
+
+# Process soundings
 soundings = {}
 for site in station_list.index:
-    try:
-        df = import_soundings(site)
-        df.to_csv('../Data/Soundings/' + site + '-cleaned-soundings.csv')
-        soundings[site] = df
-        print(site)
-        del df
-    except:
-        print('Failed ' + site)
+    df = import_soundings(site)
+    df.to_csv('../Data/Soundings/' + site + '-cleaned-soundings.csv')
+    soundings[site] = df
+    print(site)
+    del df
